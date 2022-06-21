@@ -34,8 +34,7 @@ import com.example.android.camerax.video.R
 import com.example.android.camerax.video.databinding.FragmentPermissionBinding
 
 private var PERMISSIONS_REQUIRED = arrayOf(
-    Manifest.permission.CAMERA,
-    Manifest.permission.RECORD_AUDIO)
+    Manifest.permission.CAMERA)
 
 /**
  * This [Fragment] requests permissions and, once granted, it will navigate to the next fragment
@@ -87,7 +86,7 @@ class PermissionsFragment : Fragment() {
             // Handle Permission granted/rejected
             var permissionGranted = true
             permissions.entries.forEach {
-                if (it.key in PERMISSIONS_REQUIRED && it.value == false)
+                if (it.key in PERMISSIONS_REQUIRED && !it.value)
                     permissionGranted = false
             }
             if (!permissionGranted) {

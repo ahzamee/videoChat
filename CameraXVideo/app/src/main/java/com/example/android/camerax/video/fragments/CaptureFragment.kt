@@ -1,31 +1,3 @@
-/**
- * Copyright 2021 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-/**
- * Simple app to demonstrate CameraX Video capturing with Recorder ( to local files ), with the
- * following simple control follow:
- *   - user starts capture.
- *   - this app disables all UI selections.
- *   - this app enables capture run-time UI (pause/resume/stop).
- *   - user controls recording with run-time UI, eventually tap "stop" to end.
- *   - this app informs CameraX recording to stop with recording.stop() (or recording.close()).
- *   - CameraX notify this app that the recording is indeed stopped, with the Finalize event.
- *   - this app starts VideoViewer fragment to view the captured result.
-*/
-
 package com.example.android.camerax.video.fragments
 
 import android.annotation.SuppressLint
@@ -38,7 +10,6 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.*
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
@@ -56,8 +27,6 @@ import androidx.core.util.Consumer
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.whenCreated
-import androidx.recyclerview.widget.LinearLayoutManager
-import com.example.android.camera.utils.GenericListAdapter
 import com.example.android.camerax.video.extensions.getAspectRatio
 import com.example.android.camerax.video.extensions.getAspectRatioString
 import com.example.android.camerax.video.extensions.getNameString
@@ -102,6 +71,7 @@ class CaptureFragment : Fragment() {
      *   (VideoCapture can work on its own). The function should always execute on
      *   the main thread.
      */
+    @SuppressLint("RestrictedApi")
     private suspend fun bindCaptureUsecase() {
         val cameraProvider = ProcessCameraProvider.getInstance(requireContext()).await()
 
@@ -109,7 +79,7 @@ class CaptureFragment : Fragment() {
 
         // create the user required QualitySelector (video resolution): we know this is
         // supported, a valid qualitySelector will be created.
-        val quality = cameraCapabilities[cameraIndex].qualities[qualityIndex]
+        val quality = Quality.SD
         val qualitySelector = QualitySelector.from(quality)
 
         captureViewBinding.previewView.updateLayoutParams<ConstraintLayout.LayoutParams> {
@@ -131,6 +101,8 @@ class CaptureFragment : Fragment() {
             .setQualitySelector(qualitySelector)
             .build()
         videoCapture = VideoCapture.withOutput(recorder)
+
+        //Log.d("output", )
 
         try {
             cameraProvider.unbindAll()
@@ -295,12 +267,6 @@ class CaptureFragment : Fragment() {
             isEnabled = false
         }
 
-        // audioEnabled by default is disabled.
-        captureViewBinding.audioSelection.isChecked = audioEnabled
-        captureViewBinding.audioSelection.setOnClickListener {
-            audioEnabled = captureViewBinding.audioSelection.isChecked
-        }
-
         // React to user touching the capture button
         captureViewBinding.captureButton.apply {
             setOnClickListener {
@@ -403,18 +369,12 @@ class CaptureFragment : Fragment() {
     private fun enableUI(enable: Boolean) {
         arrayOf(captureViewBinding.cameraButton,
                 captureViewBinding.captureButton,
-                captureViewBinding.stopButton,
-                captureViewBinding.audioSelection,
-                captureViewBinding.qualitySelection).forEach {
+                captureViewBinding.stopButton).forEach {
                     it.isEnabled = enable
         }
         // disable the camera button if no device to switch
         if (cameraCapabilities.size <= 1) {
             captureViewBinding.cameraButton.isEnabled = false
-        }
-        // disable the resolution list if no resolution to switch
-        if (cameraCapabilities[cameraIndex].qualities.size <= 1) {
-            captureViewBinding.qualitySelection.apply { isEnabled = false }
         }
     }
 
@@ -431,13 +391,9 @@ class CaptureFragment : Fragment() {
                     it.stopButton.visibility = View.INVISIBLE
 
                     it.cameraButton.visibility= View.VISIBLE
-                    it.audioSelection.visibility = View.VISIBLE
-                    it.qualitySelection.visibility=View.VISIBLE
                 }
                 UiState.RECORDING -> {
                     it.cameraButton.visibility = View.INVISIBLE
-                    it.audioSelection.visibility = View.INVISIBLE
-                    it.qualitySelection.visibility = View.INVISIBLE
 
                     it.captureButton.setImageResource(R.drawable.ic_pause)
                     it.captureButton.isEnabled = true
@@ -470,7 +426,6 @@ class CaptureFragment : Fragment() {
         cameraIndex = 0
         qualityIndex = DEFAULT_QUALITY_IDX
         audioEnabled = false
-        captureViewBinding.audioSelection.isChecked = audioEnabled
         initializeQualitySectionsUI()
     }
 
@@ -485,42 +440,6 @@ class CaptureFragment : Fragment() {
     private fun initializeQualitySectionsUI() {
         val selectorStrings = cameraCapabilities[cameraIndex].qualities.map {
             it.getNameString()
-        }
-        // create the adapter to Quality selection RecyclerView
-        captureViewBinding.qualitySelection.apply {
-            layoutManager = LinearLayoutManager(context)
-            adapter = GenericListAdapter(
-                selectorStrings,
-                itemLayoutId = R.layout.video_quality_item
-            ) { holderView, qcString, position ->
-
-                holderView.apply {
-                    findViewById<TextView>(R.id.qualityTextView)?.text = qcString
-                    // select the default quality selector
-                    isSelected = (position == qualityIndex)
-                }
-
-                holderView.setOnClickListener { view ->
-                    if (qualityIndex == position) return@setOnClickListener
-
-                    captureViewBinding.qualitySelection.let {
-                        // deselect the previous selection on UI.
-                        it.findViewHolderForAdapterPosition(qualityIndex)
-                            ?.itemView
-                            ?.isSelected = false
-                    }
-                    // turn on the new selection on UI.
-                    view.isSelected = true
-                    qualityIndex = position
-
-                    // rebind the use cases to put the new QualitySelection in action.
-                    enableUI(false)
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        bindCaptureUsecase()
-                    }
-                }
-            }
-            isEnabled = false
         }
     }
 
@@ -545,7 +464,7 @@ class CaptureFragment : Fragment() {
 
     companion object {
         // default Quality selection if no input from UI
-        const val DEFAULT_QUALITY_IDX = 0
+        val DEFAULT_QUALITY_IDX: Quality = Quality.SD
         val TAG:String = CaptureFragment::class.java.simpleName
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
     }
