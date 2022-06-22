@@ -56,7 +56,6 @@ class CaptureFragment : Fragment() {
         IDLE,       // Not recording, all UI controls are active.
         RECORDING,  // Camera is recording, only display Pause/Resume & Stop button.
         FINALIZED,  // Recording just completes, disable all RECORDING UI controls.
-        RECOVERY    // For future use.
     }
     private var cameraIndex = 0
     private var qualityIndex = DEFAULT_QUALITY_IDX
@@ -77,8 +76,6 @@ class CaptureFragment : Fragment() {
 
         val cameraSelector = getCameraSelector(cameraIndex)
 
-        // create the user required QualitySelector (video resolution): we know this is
-        // supported, a valid qualitySelector will be created.
         val quality = Quality.SD
         val qualitySelector = QualitySelector.from(quality)
 
@@ -120,15 +117,6 @@ class CaptureFragment : Fragment() {
         enableUI(true)
     }
 
-    /**
-     * Kick start the video recording
-     *   - config Recorder to capture to MediaStoreOutput
-     *   - register RecordEvent Listener
-     *   - apply audio request from user
-     *   - start recording!
-     * After this function, user could start/pause/resume/stop recording and application listens
-     * to VideoRecordEvent for the current recording status.
-     */
     @SuppressLint("MissingPermission")
     private fun startRecording() {
         // create MediaStoreOutputOptions for our recorder: resulting our recording!
@@ -146,8 +134,7 @@ class CaptureFragment : Fragment() {
 
         // configure Recorder and Start recording to the mediaStoreOutput.
         currentRecording = videoCapture.output
-               .prepareRecording(requireActivity(), mediaStoreOutput)
-               .apply { if (audioEnabled) withAudioEnabled() }
+               .prepareRecording(requireActivity(),mediaStoreOutput)
                .start(mainThreadExecutor, captureListener)
 
         Log.i(TAG, "Recording started")
@@ -185,7 +172,8 @@ class CaptureFragment : Fragment() {
             Log.i(TAG, "Error: This device does not have any camera, bailing out")
             requireActivity().finish()
         }
-        return (cameraCapabilities[idx % cameraCapabilities.size].camSelector)
+        //return (cameraCapabilities[idx % cameraCapabilities.size].camSelector)
+        return (cameraCapabilities[1].camSelector)
     }
 
     data class CameraCapability(val camSelector: CameraSelector, val qualities:List<Quality>)
@@ -251,21 +239,6 @@ class CaptureFragment : Fragment() {
      */
     @SuppressLint("ClickableViewAccessibility", "MissingPermission")
     private fun initializeUI() {
-        captureViewBinding.cameraButton.apply {
-            setOnClickListener {
-                cameraIndex = (cameraIndex + 1) % cameraCapabilities.size
-                // camera device change is in effect instantly:
-                //   - reset quality selection
-                //   - restart preview
-                qualityIndex = DEFAULT_QUALITY_IDX
-                initializeQualitySectionsUI()
-                enableUI(false)
-                viewLifecycleOwner.lifecycleScope.launch {
-                    bindCaptureUsecase()
-                }
-            }
-            isEnabled = false
-        }
 
         // React to user touching the capture button
         captureViewBinding.captureButton.apply {
@@ -315,7 +288,7 @@ class CaptureFragment : Fragment() {
                 post { text = it }
             }
         }
-        captureLiveStatus.value = getString(R.string.Idle)
+        captureLiveStatus.value = getString(R.string.tap)
     }
 
     /**
@@ -353,9 +326,11 @@ class CaptureFragment : Fragment() {
         val stats = event.recordingStats
         val size = stats.numBytesRecorded / 1000
         val time = java.util.concurrent.TimeUnit.NANOSECONDS.toSeconds(stats.recordedDurationNanos)
-        var text = "${state}: recorded ${size}KB, in ${time}second"
+        //var text = "${state}: recorded ${size}KB, in ${time}second"
+        var text = "$time seconds"
         if(event is VideoRecordEvent.Finalize)
-            text = "${text}\nFile saved to: ${event.outputResults.outputUri}"
+            text = "Recorded"
+            //text = "${text}\nFile saved to: ${event.outputResults.outputUri}"
 
         captureLiveStatus.value = text
         Log.i(TAG, "recording event: $text")
@@ -367,15 +342,15 @@ class CaptureFragment : Fragment() {
      *    Once recording is started, need to disable able UI to avoid conflict.
      */
     private fun enableUI(enable: Boolean) {
-        arrayOf(captureViewBinding.cameraButton,
+        arrayOf(
                 captureViewBinding.captureButton,
                 captureViewBinding.stopButton).forEach {
                     it.isEnabled = enable
         }
-        // disable the camera button if no device to switch
-        if (cameraCapabilities.size <= 1) {
-            captureViewBinding.cameraButton.isEnabled = false
-        }
+//        // disable the camera button if no device to switch
+//        if (cameraCapabilities.size <= 1) {
+//            captureViewBinding.cameraButton.isEnabled = false
+//        }
     }
 
     /**
@@ -383,17 +358,14 @@ class CaptureFragment : Fragment() {
      *  - at recording: hide audio, qualitySelection,change camera UI; enable stop button
      *  - otherwise: show all except the stop button
      */
-    private fun showUI(state: UiState, status:String = "idle") {
+    private fun showUI(state: UiState, status:String = getString(R.string.tap)) {
         captureViewBinding.let {
             when(state) {
                 UiState.IDLE -> {
                     it.captureButton.setImageResource(R.drawable.ic_start)
                     it.stopButton.visibility = View.INVISIBLE
-
-                    it.cameraButton.visibility= View.VISIBLE
                 }
                 UiState.RECORDING -> {
-                    it.cameraButton.visibility = View.INVISIBLE
 
                     it.captureButton.setImageResource(R.drawable.ic_pause)
                     it.captureButton.isEnabled = true
