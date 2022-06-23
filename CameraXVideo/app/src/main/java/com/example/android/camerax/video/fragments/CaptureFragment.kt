@@ -3,34 +3,43 @@ package com.example.android.camerax.video.fragments
 import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.res.Configuration
-import java.text.SimpleDateFormat
+import android.database.Cursor
+import android.media.MediaScannerConnection
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.lifecycleScope
-import androidx.navigation.NavController
-import androidx.navigation.Navigation
-import com.example.android.camerax.video.R
-import com.example.android.camerax.video.databinding.FragmentCaptureBinding
-import androidx.camera.lifecycle.ProcessCameraProvider
+import android.widget.Toast
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.*
 import androidx.concurrent.futures.await
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.util.Consumer
 import androidx.core.view.updateLayoutParams
+import androidx.fragment.app.Fragment
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.whenCreated
+import androidx.navigation.NavController
+import androidx.navigation.Navigation
+import com.example.android.camerax.video.R
+import com.example.android.camerax.video.databinding.FragmentCaptureBinding
 import com.example.android.camerax.video.extensions.getAspectRatio
 import com.example.android.camerax.video.extensions.getAspectRatioString
 import com.example.android.camerax.video.extensions.getNameString
+import com.example.android.camerax.video.viewModel.MainActivityViewModel
 import kotlinx.coroutines.*
+import java.io.File
+import java.text.SimpleDateFormat
 import java.util.*
 
 class CaptureFragment : Fragment() {
@@ -71,7 +80,7 @@ class CaptureFragment : Fragment() {
      *   the main thread.
      */
     @SuppressLint("RestrictedApi")
-    private suspend fun bindCaptureUsecase() {
+    private suspend fun bindCaptureUseCase() {
         val cameraProvider = ProcessCameraProvider.getInstance(requireContext()).await()
 
         val cameraSelector = getCameraSelector(cameraIndex)
@@ -99,8 +108,6 @@ class CaptureFragment : Fragment() {
             .build()
         videoCapture = VideoCapture.withOutput(recorder)
 
-        //Log.d("output", )
-
         try {
             cameraProvider.unbindAll()
             cameraProvider.bindToLifecycle(
@@ -120,9 +127,9 @@ class CaptureFragment : Fragment() {
     @SuppressLint("MissingPermission")
     private fun startRecording() {
         // create MediaStoreOutputOptions for our recorder: resulting our recording!
-        val name = "CameraX-recording-" +
-            SimpleDateFormat(FILENAME_FORMAT, Locale.US)
-                .format(System.currentTimeMillis()) + ".mp4"
+        val name = "sign-recording" +
+        SimpleDateFormat(FILENAME_FORMAT, Locale.US)
+            .format(System.currentTimeMillis()) + ".mp4"
         val contentValues = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, name)
         }
@@ -151,14 +158,96 @@ class CaptureFragment : Fragment() {
         updateUI(event)
 
         if (event is VideoRecordEvent.Finalize) {
+
+            getFilePathfromUri(event.outputResults.outputUri)
+
              // display the captured video
-            lifecycleScope.launch {
-                navController.navigate(
-                    CaptureFragmentDirections.actionCaptureToVideoViewer(
-                        event.outputResults.outputUri
-                    )
-                )
+//            lifecycleScope.launch {
+//                navController.navigate(
+//                    CaptureFragmentDirections.actionCaptureToVideoViewer(
+//                        event.outputResults.outputUri
+//                    )
+//                )
+//            }
+        }
+    }
+
+    private fun getFilePathfromUri(uri: Uri) {
+        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+            getFileFromPath(uri)
+        } else {
+            // force MediaScanner to re-scan the media file
+            val path = getAbsolutePathFromUri(uri) ?: return
+            MediaScannerConnection.scanFile(
+                context, arrayOf(path), null
+            ) { _, uri ->
+                // playback video on main thread with VideoView
+                if (uri != null) {
+                    lifecycleScope.launch {
+                        getFileFromPath(uri)
+                    }
+                }
             }
+        }
+    }
+
+    private fun getFileFromPath(outputUri: Uri) {
+        val filePath = getAbsolutePathFromUri(outputUri) ?: return
+        Log.i("aaaaaa", filePath.toString())
+
+        val file = File(filePath)
+
+        sendFileToServer(file)
+    }
+
+    private fun sendFileToServer(file: File) {
+        val viewModel: MainActivityViewModel = ViewModelProvider(this).get(MainActivityViewModel::class.java)
+
+        viewModel.getLiveDataObserver().observe(this, Observer {
+            if (it != null){
+
+
+                var data: String;
+                val sb = StringBuilder()
+
+                it.message?.forEach {
+                    sb.append(it)
+                    sb.append(" ")
+                }
+                data = sb.toString()
+
+                captureViewBinding.chatTxt?.editText?.setText(data)
+                Log.d("aaaasuccess", data)
+
+            }else{
+                Toast.makeText(context, "failed", Toast.LENGTH_SHORT).show()
+                Log.d("aaafail","failed")
+            }
+        })
+        viewModel.makeApiCall(getString(R.string.base_url),file)
+    }
+
+    private fun getAbsolutePathFromUri(contentUri: Uri): String? {
+        var cursor: Cursor? = null
+        return try {
+            cursor = requireContext()
+                .contentResolver
+                .query(contentUri, arrayOf(MediaStore.Images.Media.DATA), null, null, null)
+            if (cursor == null) {
+                return null
+            }
+            val columnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+            cursor.moveToFirst()
+            cursor.getString(columnIndex)
+        } catch (e: RuntimeException) {
+            Log.e("VideoViewerFragment", String.format(
+                "Failed in getting absolute path for Uri %s with Exception %s",
+                contentUri.toString(), e.toString()
+            )
+            )
+            null
+        } finally {
+            cursor?.close()
         }
     }
 
@@ -228,7 +317,7 @@ class CaptureFragment : Fragment() {
             }
             initializeQualitySectionsUI()
 
-            bindCaptureUsecase()
+            bindCaptureUseCase()
         }
     }
 
@@ -291,16 +380,6 @@ class CaptureFragment : Fragment() {
         captureLiveStatus.value = getString(R.string.tap)
     }
 
-    /**
-     * UpdateUI according to CameraX VideoRecordEvent type:
-     *   - user starts capture.
-     *   - this app disables all UI selections.
-     *   - this app enables capture run-time UI (pause/resume/stop).
-     *   - user controls recording with run-time UI, eventually tap "stop" to end.
-     *   - this app informs CameraX recording to stop with recording.stop() (or recording.close()).
-     *   - CameraX notify this app that the recording is indeed stopped, with the Finalize event.
-     *   - this app starts VideoViewer fragment to view the captured result.
-     */
     private fun updateUI(event: VideoRecordEvent) {
         val state = if (event is VideoRecordEvent.Status) recordingState.getNameString()
                     else event.getNameString()
@@ -324,7 +403,7 @@ class CaptureFragment : Fragment() {
         }
 
         val stats = event.recordingStats
-        val size = stats.numBytesRecorded / 1000
+        //val size = stats.numBytesRecorded / 1000
         val time = java.util.concurrent.TimeUnit.NANOSECONDS.toSeconds(stats.recordedDurationNanos)
         //var text = "${state}: recorded ${size}KB, in ${time}second"
         var text = "$time seconds"
@@ -347,10 +426,6 @@ class CaptureFragment : Fragment() {
                 captureViewBinding.stopButton).forEach {
                     it.isEnabled = enable
         }
-//        // disable the camera button if no device to switch
-//        if (cameraCapabilities.size <= 1) {
-//            captureViewBinding.cameraButton.isEnabled = false
-//        }
     }
 
     /**

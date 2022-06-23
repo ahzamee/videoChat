@@ -65,4 +65,22 @@
         app:layout_constraintTop_toTopOf="@id/cam_functions"
         app:layout_constraintStart_toStartOf="@+id/cam_functions" />
 
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/chat_txt"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="50dp"
+        android:background="@color/txWhite"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:hint="text">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:text=""
+            />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>
